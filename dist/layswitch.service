@@ -1,0 +1,13 @@
+[Unit]
+Description=layswitch: automatic keyboard layout switching
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/layswitch
+Restart=on-failure
+RestartSec=2
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=graphical-session.target

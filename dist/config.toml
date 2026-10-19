@@ -1,0 +1,25 @@
+# ~/.config/layswitch/config.toml — all keys are optional.
+
+# Fix words typed in the wrong layout on space / punctuation.
+auto_switch = true
+
+# Fix one-letter typos (пртвет -> привет). Off by default: names and slang get "fixed" too.
+autocorrect = false
+
+# Hotkey (evdev name, see `grep KEY_ /usr/include/linux/input-event-codes.h`):
+#   hotkey        — undo the last auto fix / convert the current or last word
+#   Shift+hotkey  — toggle auto mode (e.g. before typing a password)
+#   Ctrl+hotkey   — convert the selected text (needs wl-clipboard)
+hotkey = "KEY_PAUSE"
+
+# Pause after a layout switch before retyping, ms. Raise if letters come out in the old layout.
+switch_delay_ms = 30
+
+# Threshold for switching words that are not in the dictionary. Higher = more cautious.
+lm_margin = 1.0
+min_lm_len = 4
+
+notifications = true
+
+# Substrings of keyboard names to leave alone (see `layswitch` log for names).
+exclude_devices = []

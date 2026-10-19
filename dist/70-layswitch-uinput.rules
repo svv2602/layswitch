@@ -1,0 +1,2 @@
+# layswitch creates a virtual keyboard: let the input group use /dev/uinput.
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
