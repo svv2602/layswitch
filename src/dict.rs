@@ -1,5 +1,6 @@
 //! Frequency dictionaries and character trigram models per language.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 use crate::layout::Lang;
@@ -14,6 +15,15 @@ const RU_EXTRA: &str = include_str!("../data/ru_extra.txt");
 const UK_EXTRA: &str = include_str!("../data/uk_extra.txt");
 /// Shorter entries of the full lists are mostly noise that would block real layout fixes.
 const EXTRA_MIN_LEN: usize = 5;
+
+/// Hand-written IT jargon (коммит, деплой) that the subtitle-based lists lack.
+const RU_JARGON: &str = include_str!("../data/ru_jargon.txt");
+const UK_JARGON: &str = include_str!("../data/uk_jargon.txt");
+
+/// Words of a "# comment" + whitespace-separated word list.
+pub fn word_list(text: &str) -> impl Iterator<Item = &str> {
+    text.lines().filter(|l| !l.trim_start().starts_with('#')).flat_map(str::split_whitespace)
+}
 
 /// One-letter words that are real words; the frequency lists are full of stray letters.
 fn singles(lang: Lang) -> &'static [&'static str] {
@@ -30,20 +40,22 @@ const EN_SUFFIXES: &[&str] = &["s", "t", "m", "re", "ll", "ve", "d"];
 pub struct Dict {
     pub lang: Lang,
     ranks: HashMap<String, u32>,
-    /// Known words beyond the frequency list: valid, but never suggested as typo fixes.
-    extra: HashSet<&'static str>,
+    /// Known words beyond the frequency list (rare forms, jargon, user words):
+    /// valid and switch targets, but never suggested as typo fixes.
+    extra: HashSet<Cow<'static, str>>,
     lm: CharModel,
 }
 
 impl Dict {
     pub fn builtin(lang: Lang) -> Dict {
-        let (text, extra) = match lang {
-            Lang::En => (EN_WORDS, EN_EXTRA),
-            Lang::Ru => (RU_WORDS, RU_EXTRA),
-            Lang::Uk => (UK_WORDS, UK_EXTRA),
+        let (text, extra, jargon) = match lang {
+            Lang::En => (EN_WORDS, EN_EXTRA, ""),
+            Lang::Ru => (RU_WORDS, RU_EXTRA, RU_JARGON),
+            Lang::Uk => (UK_WORDS, UK_EXTRA, UK_JARGON),
         };
         let mut dict = Dict::from_freq_list(lang, text, usize::MAX);
-        dict.extra = extra.lines().filter(|w| w.chars().count() >= EXTRA_MIN_LEN).collect();
+        let rare = extra.lines().filter(|w| w.chars().count() >= EXTRA_MIN_LEN);
+        dict.extra = rare.chain(word_list(jargon)).map(Cow::Borrowed).collect();
         dict
     }
 
@@ -96,14 +108,19 @@ impl Dict {
         }
     }
 
-    /// The word is a real word: either in the frequency list or one of the extra word forms.
+    /// The word is a real word: either in the frequency list or one of the extra words.
     pub fn knows(&self, word: &str) -> bool {
         self.rank(word).is_some() || self.is_extra(word)
     }
 
-    /// Rare but valid word form; ranks after everything in the frequency list.
+    /// Valid word outside the frequency list; ranks after everything in it.
     pub fn is_extra(&self, word: &str) -> bool {
         self.extra.contains(word)
+    }
+
+    /// Adds a lowercase word to the extra words.
+    pub fn add_word(&mut self, word: String) {
+        self.extra.insert(Cow::Owned(word));
     }
 
     /// Average log-probability per character under the trigram model.
@@ -216,6 +233,19 @@ impl Dicts {
         Dicts { dicts }
     }
 
+    /// Adds the user's words to every language whose letters they are written in.
+    pub fn add_user_words(&mut self, words: impl IntoIterator<Item = String>) {
+        for word in words {
+            let word = word.to_lowercase();
+            for dict in &mut self.dicts {
+                let lang = dict.lang;
+                if word.chars().all(|c| lang.is_letter(c) || c == '\'' || c == 'ʼ') {
+                    dict.add_word(word.clone());
+                }
+            }
+        }
+    }
+
     pub fn get(&self, lang: Lang) -> &Dict {
         self.dicts.iter().find(|d| d.lang == lang).expect("dictionary for every language")
     }
@@ -241,5 +271,11 @@ mod tests {
         assert!(ru.rank("каталоге").is_none() && ru.knows("каталоге"));
         // Short entries of the full list stay unknown.
         assert!(!ru.knows("шт"));
+        assert!(ru.knows("коммит") && ru.knows("пуш"));
+
+        let mut dicts = Dicts::builtin();
+        dicts.add_user_words(["Кубер".to_string(), "kubectl".to_string()]);
+        assert!(dicts.get(Lang::Ru).knows("кубер") && dicts.get(Lang::Uk).knows("кубер"));
+        assert!(dicts.get(Lang::En).knows("kubectl") && !dicts.get(Lang::Ru).knows("kubectl"));
     }
 }

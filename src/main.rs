@@ -129,7 +129,9 @@ fn read_primary_selection() -> Result<String> {
 }
 
 fn detector(cfg: &Config) -> Detector {
-    Detector { dicts: Dicts::builtin(), lm_margin: cfg.lm_margin, min_lm_len: cfg.min_lm_len }
+    let mut dicts = Dicts::builtin();
+    dicts.add_user_words(config::load_words());
+    Detector { dicts, lm_margin: cfg.lm_margin, min_lm_len: cfg.min_lm_len }
 }
 
 fn run(cfg: Config) -> Result<()> {

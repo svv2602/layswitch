@@ -110,6 +110,15 @@ impl ksni::Tray for Tray {
             }
             .into(),
             StandardItem {
+                label: "Мои слова…".into(),
+                icon_name: "accessories-dictionary".into(),
+                activate: Box::new(|_: &mut Self| {
+                    open_file(&config::dir().join("words.txt"), config::WORDS_HEADER)
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
                 label: "Настройки…".into(),
                 icon_name: "configure".into(),
                 activate: Box::new(|_: &mut Self| {

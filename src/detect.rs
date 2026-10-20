@@ -86,7 +86,7 @@ impl Detector {
                     // Any dictionary hit beats any model guess; prefer frequent words.
                     100.0 - (rank as f32 + 1.0).ln()
                 } else if dict.is_extra(&alt) {
-                    // Rare word form: still a dictionary hit, below every ranked word (ln 50k ≈ 10.8).
+                    // Rare form, jargon or user word: still a dictionary hit, below every ranked one (ln 50k ≈ 10.8).
                     89.0
                 } else if alt.chars().count() >= self.min_lm_len {
                     let gain = dict.score(&alt) - cur_score;
@@ -166,6 +166,8 @@ pub(crate) mod tests {
         assert_eq!(check(Lang::Ru, "вщтэе").as_deref(), Some("don't"));
         // Rare word form, known only from the extra list.
         assert_eq!(check(Lang::En, "rfnfkjut").as_deref(), Some("каталоге"));
+        // Jargon.
+        assert_eq!(check(Lang::En, "rjvvbn").as_deref(), Some("коммит"));
     }
 
     #[test]
@@ -192,5 +194,6 @@ pub(crate) mod tests {
         for w in ["каталоге", "тестами", "указывается", "консультанту", "Сербия"] {
             assert_eq!(DETECTOR.typo_fix(Lang::Ru, w), None, "{w}");
         }
+        assert_eq!(DETECTOR.typo_fix(Lang::Ru, "коммит"), None);
     }
 }

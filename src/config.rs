@@ -72,6 +72,20 @@ pub fn load_ignored() -> HashSet<String> {
         .unwrap_or_default()
 }
 
+/// Header of a new words.txt, written when the user opens it from the tray.
+pub const WORDS_HEADER: &str = "\
+# Свои слова: не исправляются и служат целью переключения (rjvvbn -> коммит).
+# По одному или через пробел; строки с # игнорируются.
+# После правки: systemctl --user restart layswitch
+";
+
+/// The user's own words (~/.config/layswitch/words.txt), any language.
+pub fn load_words() -> Vec<String> {
+    fs::read_to_string(dir().join("words.txt"))
+        .map(|t| crate::dict::word_list(&t).map(String::from).collect())
+        .unwrap_or_default()
+}
+
 pub fn append_ignored(word: &str) -> Result<()> {
     fs::create_dir_all(dir())?;
     let mut f = OpenOptions::new().create(true).append(true).open(dir().join("ignore.txt"))?;
