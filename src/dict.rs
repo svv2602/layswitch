@@ -1,12 +1,19 @@
 //! Frequency dictionaries and character trigram models per language.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::layout::Lang;
 
 const EN_WORDS: &str = include_str!("../data/en_50k.txt");
 const RU_WORDS: &str = include_str!("../data/ru_50k.txt");
 const UK_WORDS: &str = include_str!("../data/uk_50k.txt");
+
+/// Rarer word forms (5+ letters) from the full lists, see scripts/extra_words.py.
+const EN_EXTRA: &str = include_str!("../data/en_extra.txt");
+const RU_EXTRA: &str = include_str!("../data/ru_extra.txt");
+const UK_EXTRA: &str = include_str!("../data/uk_extra.txt");
+/// Shorter entries of the full lists are mostly noise that would block real layout fixes.
+const EXTRA_MIN_LEN: usize = 5;
 
 /// One-letter words that are real words; the frequency lists are full of stray letters.
 fn singles(lang: Lang) -> &'static [&'static str] {
@@ -23,17 +30,21 @@ const EN_SUFFIXES: &[&str] = &["s", "t", "m", "re", "ll", "ve", "d"];
 pub struct Dict {
     pub lang: Lang,
     ranks: HashMap<String, u32>,
+    /// Known words beyond the frequency list: valid, but never suggested as typo fixes.
+    extra: HashSet<&'static str>,
     lm: CharModel,
 }
 
 impl Dict {
     pub fn builtin(lang: Lang) -> Dict {
-        let text = match lang {
-            Lang::En => EN_WORDS,
-            Lang::Ru => RU_WORDS,
-            Lang::Uk => UK_WORDS,
+        let (text, extra) = match lang {
+            Lang::En => (EN_WORDS, EN_EXTRA),
+            Lang::Ru => (RU_WORDS, RU_EXTRA),
+            Lang::Uk => (UK_WORDS, UK_EXTRA),
         };
-        Dict::from_freq_list(lang, text, usize::MAX)
+        let mut dict = Dict::from_freq_list(lang, text, usize::MAX);
+        dict.extra = extra.lines().filter(|w| w.chars().count() >= EXTRA_MIN_LEN).collect();
+        dict
     }
 
     /// Parses "word count" lines, ordered by frequency, keeping the first `limit` of them.
@@ -53,7 +64,7 @@ impl Dict {
             lm.add(&word, count.ln().max(1.0));
             ranks.entry(word).or_insert(rank as u32);
         }
-        Dict { lang, ranks, lm }
+        Dict { lang, ranks, extra: HashSet::new(), lm }
     }
 
     /// Frequency rank of a lowercase word, if it counts as a known word.
@@ -85,8 +96,14 @@ impl Dict {
         }
     }
 
+    /// The word is a real word: either in the frequency list or one of the extra word forms.
     pub fn knows(&self, word: &str) -> bool {
-        self.rank(word).is_some()
+        self.rank(word).is_some() || self.is_extra(word)
+    }
+
+    /// Rare but valid word form; ranks after everything in the frequency list.
+    pub fn is_extra(&self, word: &str) -> bool {
+        self.extra.contains(word)
     }
 
     /// Average log-probability per character under the trigram model.
@@ -219,5 +236,10 @@ mod tests {
         assert!(uk.knows("п'ять"));
         assert!(en.score("hello") > en.score("ghbdtn"));
         assert_eq!(en.suggest("helllo").map(|s| s.0).as_deref(), Some("hello"));
+
+        let ru = Dict::builtin(Lang::Ru);
+        assert!(ru.rank("каталоге").is_none() && ru.knows("каталоге"));
+        // Short entries of the full list stay unknown.
+        assert!(!ru.knows("шт"));
     }
 }
