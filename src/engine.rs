@@ -84,6 +84,11 @@ fn is_modifier(key: KeyCode) -> bool {
     )
 }
 
+/// How a word is stored in the ignore list: lowercase, without trailing punctuation.
+fn ignore_key(lang: Lang, text: &str) -> String {
+    text.trim_end_matches(|c| !lang.is_letter(c)).to_lowercase()
+}
+
 fn control_key(c: char) -> Option<KeyCode> {
     match c {
         '\n' => Some(KeyCode::KEY_ENTER),
@@ -329,7 +334,7 @@ impl<S: System> Engine<S> {
         }
         let strokes = std::mem::take(&mut self.buffer);
         let typed = layout::decode(cur_lang, &strokes, self.caps).unwrap_or_default();
-        let ignored = self.ignored.contains(&typed.to_lowercase());
+        let ignored = self.ignored.contains(&ignore_key(cur_lang, &typed));
 
         if self.enabled && self.opts.auto_switch && !ignored
             && let Some(sw) = self.detector.decide(&strokes, self.caps, cur, &layouts, &self.recent)
@@ -437,7 +442,7 @@ impl<S: System> Engine<S> {
         };
         let target = if shown.auto {
             if let Some(lang) = Self::lang_at(&layouts, shown.layout) {
-                let original = layout::decode(lang, &shown.strokes, self.caps).unwrap_or_default().to_lowercase();
+                let original = ignore_key(lang, &layout::decode(lang, &shown.strokes, self.caps).unwrap_or_default());
                 info!("undo, will not touch {original:?} again");
                 self.sys.remember_ignored(&original);
                 self.ignored.insert(original);
@@ -645,6 +650,17 @@ mod tests {
         assert_eq!(e.sys.ignored, vec!["ghbdtn".to_string()]);
         type_as(&mut e, Lang::En, "ghbdtn ");
         assert_eq!(e.sys.text, "ghbdtn ghbdtn ");
+        // Trailing punctuation is neither stored nor compared.
+        type_as(&mut e, Lang::En, "ghbdtn, ");
+        assert_eq!(e.sys.text, "ghbdtn ghbdtn ghbdtn, ");
+        let mut e = engine(1);
+        type_as(&mut e, Lang::Ru, "шт, ");
+        assert_eq!(e.sys.text, "in, ");
+        press(&mut e, KeyCode::KEY_PAUSE);
+        assert_eq!(e.sys.text, "шт, ");
+        assert_eq!(e.sys.ignored, vec!["шт".to_string()]);
+        type_as(&mut e, Lang::Ru, "шт ");
+        assert_eq!(e.sys.text, "шт, шт ");
 
         // Hotkey in the middle of a word converts what is typed so far.
         let mut e = engine(0);
